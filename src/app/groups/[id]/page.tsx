@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
+import StartNavigationButton from "@/components/StartNavigationButton";
 import { memberColor } from "@/lib/groups";
 import type { GroupMember, RideGroup } from "@/lib/groups";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
@@ -148,7 +149,7 @@ export default function GroupDetailPage() {
   const hasRoute = !!group.route_geojson?.geometry?.length;
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-8">
+    <div className="mx-auto max-w-2xl overflow-x-hidden px-4 py-8">
       <Link href="/groups" className="text-sm text-zinc-500 hover:text-zinc-300">
         ← Groupes
       </Link>
@@ -210,11 +211,11 @@ export default function GroupDetailPage() {
           ) : (
             <p className="mt-2 text-sm text-zinc-500">Aucune route attachée.</p>
           )}
-          <div className="mt-3 flex gap-2">
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row">
             <select
               value={rideId}
               onChange={(e) => setRideId(e.target.value)}
-              className="flex-1 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm outline-none focus:border-brand"
+              className="min-w-0 w-full flex-1 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm outline-none focus:border-brand"
             >
               <option value="">Choisir une ride sauvegardée</option>
               {rides.map((r) => (
@@ -226,7 +227,7 @@ export default function GroupDetailPage() {
             <button
               onClick={attachRoute}
               disabled={busy || !rideId}
-              className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              className="w-full shrink-0 rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white disabled:opacity-50 sm:w-auto"
             >
               Attacher
             </button>
@@ -241,14 +242,22 @@ export default function GroupDetailPage() {
         </section>
       )}
 
-      <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-        {hasRoute && group.is_active && (
-          <Link
-            href={`/groups/${group.id}/ride`}
-            className="flex-1 rounded-xl bg-brand py-3 text-center font-semibold text-white shadow-lg shadow-brand/20 hover:bg-brand-dark"
-          >
-            Lancer la ride live
-          </Link>
+      <div className="mt-8 flex flex-col gap-3">
+        {hasRoute && (
+          <>
+            <StartNavigationButton
+              route={group.route_geojson!}
+              label={`Naviguer seul · ${group.name}`}
+            />
+            {group.is_active && (
+              <Link
+                href={`/groups/${group.id}/ride`}
+                className="w-full rounded-xl border border-brand/40 bg-brand/10 py-3 text-center font-semibold text-brand hover:bg-brand/20"
+              >
+                Ride de groupe (positions live)
+              </Link>
+            )}
+          </>
         )}
         {!isLeader && (
           <button

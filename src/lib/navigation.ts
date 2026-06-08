@@ -1,4 +1,10 @@
-import type { LatLng } from "./types";
+import type { LatLng, RouteResult } from "./types";
+
+/** Distance from loop start below which we keep the original departure point. */
+export const NAV_START_TOLERANCE_M = 200;
+
+/** Distance from the active route polyline before showing an off-route warning. */
+export const OFF_ROUTE_THRESHOLD_M = 80;
 
 const OSRM_BASE =
   process.env.OSRM_BASE_URL || "https://router.project-osrm.org";
@@ -111,6 +117,37 @@ export function distanceM(a: LatLng, b: LatLng): number {
   return 2 * R * Math.asin(Math.sqrt(x));
 }
 
+/** Ordered OSRM waypoints for a saved loop, optionally from the rider position. */
+export function navPointsForRoute(
+  route: RouteResult,
+  fromPosition?: LatLng | null
+): LatLng[] {
+  const loop = [route.start, ...route.waypoints, route.start];
+  if (!fromPosition) return loop;
+  if (distanceM(fromPosition, route.start) <= NAV_START_TOLERANCE_M) return loop;
+  return [fromPosition, ...route.waypoints, route.start];
+}
+
+export function isReroutedFromPosition(
+  route: RouteResult,
+  fromPosition: LatLng
+): boolean {
+  return distanceM(fromPosition, route.start) > NAV_START_TOLERANCE_M;
+}
+
+/** Shortest distance from a point to a polyline ([lng, lat] pairs). */
+export function distanceToPolylineM(
+  position: LatLng,
+  geometry: [number, number][]
+): number {
+  if (!geometry.length) return Infinity;
+  let best = Infinity;
+  for (const [lng, lat] of geometry) {
+    best = Math.min(best, distanceM(position, { lat, lng }));
+  }
+  return best;
+}
+
 /** Pick the next navigation step based on current GPS position. */
 export function activeStepIndex(
   steps: NavStep[],
@@ -127,4 +164,21 @@ export function activeStepIndex(
     }
   }
   return Math.min(best + 1, steps.length - 1);
+}
+
+export function remainingDistanceM(
+  steps: NavStep[],
+  fromIndex: number
+): number {
+  return steps
+    .slice(fromIndex)
+    .reduce((sum, s) => sum + s.distanceM, 0);
+}
+
+export function formatEta(seconds: number): string {
+  const m = Math.round(seconds / 60);
+  if (m < 60) return `${m} min`;
+  const h = Math.floor(m / 60);
+  const r = m % 60;
+  return r > 0 ? `${h} h ${r} min` : `${h} h`;
 }

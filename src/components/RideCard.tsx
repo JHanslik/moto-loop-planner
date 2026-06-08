@@ -4,6 +4,7 @@ import { useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { STYLES, type Comment, type Ride } from "@/lib/types";
 import ExportButtons from "./ExportButtons";
+import StartNavigationButton from "./StartNavigationButton";
 
 export default function RideCard({
   ride,
@@ -114,7 +115,7 @@ export default function RideCard({
   };
 
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
+    <div className="min-w-0 overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h3 className="truncate font-semibold">{ride.name}</h3>
@@ -134,7 +135,12 @@ export default function RideCard({
         <span>⏱️ {ride.duration_min} min</span>
       </div>
 
-      <div className="mt-3">
+      <div className="mt-3 space-y-2">
+        <StartNavigationButton
+          route={ride.route_geojson}
+          label={ride.name}
+          rideId={ride.id}
+        />
         <ExportButtons route={ride.route_geojson} name={ride.name} />
       </div>
 

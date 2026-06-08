@@ -148,15 +148,40 @@ drop policy if exists "delete own comments" on public.comments;
 create policy "delete own comments"
   on public.comments for delete using (auth.uid() = user_id);
 
+-- RLS helpers (SECURITY DEFINER avoids infinite recursion when policies query group_members)
+create or replace function public.is_group_member(p_group_id uuid)
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select exists (
+    select 1 from public.group_members
+    where group_id = p_group_id and user_id = auth.uid()
+  );
+$$;
+
+create or replace function public.is_group_leader(p_group_id uuid)
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select exists (
+    select 1 from public.ride_groups
+    where id = p_group_id and leader_id = auth.uid()
+  );
+$$;
+
+grant execute on function public.is_group_member(uuid) to authenticated;
+grant execute on function public.is_group_leader(uuid) to authenticated;
+
 -- ride_groups: members read; anyone can read active groups by invite code; leader manages
 drop policy if exists "group members can read group" on public.ride_groups;
 create policy "group members can read group"
-  on public.ride_groups for select using (
-    exists (
-      select 1 from public.group_members gm
-      where gm.group_id = ride_groups.id and gm.user_id = auth.uid()
-    )
-  );
+  on public.ride_groups for select using (public.is_group_member(id));
 drop policy if exists "read group by invite code" on public.ride_groups;
 create policy "read group by invite code"
   on public.ride_groups for select using (is_active = true);
@@ -173,12 +198,7 @@ create policy "leader can delete group"
 -- group_members: members see each other; self-join; self-update sharing; leave or leader kick
 drop policy if exists "members can read membership" on public.group_members;
 create policy "members can read membership"
-  on public.group_members for select using (
-    exists (
-      select 1 from public.group_members gm
-      where gm.group_id = group_members.group_id and gm.user_id = auth.uid()
-    )
-  );
+  on public.group_members for select using (public.is_group_member(group_id));
 drop policy if exists "users can join groups" on public.group_members;
 create policy "users can join groups"
   on public.group_members for insert with check (auth.uid() = user_id);
@@ -188,11 +208,7 @@ create policy "users can update own membership"
 drop policy if exists "users can leave groups" on public.group_members;
 create policy "users can leave groups"
   on public.group_members for delete using (
-    auth.uid() = user_id
-    or exists (
-      select 1 from public.ride_groups g
-      where g.id = group_members.group_id and g.leader_id = auth.uid()
-    )
+    auth.uid() = user_id or public.is_group_leader(group_id)
   );
 
 -- 7. FEED VIEW ---------------------------------------------------------------

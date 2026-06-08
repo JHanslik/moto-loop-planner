@@ -5,6 +5,7 @@ import { useState } from "react";
 import RouteForm from "@/components/RouteForm";
 import RouteStats from "@/components/RouteStats";
 import ExportButtons from "@/components/ExportButtons";
+import StartNavigationButton from "@/components/StartNavigationButton";
 import { useAuth } from "@/components/AuthProvider";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import type { GenerateRequest, RouteResult } from "@/lib/types";
@@ -71,7 +72,7 @@ export default function PlannerPage() {
   };
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-6">
+    <div className="mx-auto max-w-7xl overflow-x-hidden px-4 py-6">
       <div className="grid gap-6 lg:grid-cols-[380px_1fr]">
         {/* Left: form + results */}
         <div className="space-y-6">
@@ -92,8 +93,12 @@ export default function PlannerPage() {
 
               <div className="space-y-3 rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
                 <div className="text-xs uppercase tracking-wide text-zinc-500">
-                  Export to GPS
+                  Navigation & export
                 </div>
+                <StartNavigationButton
+                  route={route}
+                  label={name || undefined}
+                />
                 <ExportButtons route={route} name={name || undefined} />
               </div>
 

@@ -156,7 +156,7 @@ export default function GroupsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-8">
+    <div className="mx-auto max-w-2xl overflow-x-hidden px-4 py-8">
       <h1 className="text-2xl font-bold">Group Ride</h1>
       <p className="mt-1 text-sm text-zinc-400">
         Roulez en groupe — positions live sur la carte, navigation open data.

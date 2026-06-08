@@ -19,7 +19,7 @@ export default function RootLayout({
       <body className="min-h-screen">
         <AuthProvider>
           <Navbar />
-          <main>{children}</main>
+          <main className="overflow-x-hidden">{children}</main>
         </AuthProvider>
       </body>
     </html>

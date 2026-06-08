@@ -13,12 +13,12 @@ export default function ExportButtons({
 }) {
   const label = name || `Moto loop · ${route.startName}`;
   return (
-    <div className="grid grid-cols-3 gap-2">
+    <div className="grid min-w-0 grid-cols-3 gap-2">
       <a
         href={googleMapsUrl(route)}
         target="_blank"
         rel="noopener noreferrer"
-        className="flex items-center justify-center gap-1.5 rounded-lg border border-zinc-700 py-2 text-xs font-medium text-zinc-200 transition hover:bg-zinc-800"
+        className="flex min-w-0 items-center justify-center gap-1 rounded-lg border border-zinc-700 px-1 py-2 text-[11px] font-medium text-zinc-200 transition hover:bg-zinc-800 sm:text-xs"
       >
         🗺️ Google
       </a>
@@ -26,13 +26,14 @@ export default function ExportButtons({
         href={wazeUrl(route)}
         target="_blank"
         rel="noopener noreferrer"
-        className="flex items-center justify-center gap-1.5 rounded-lg border border-zinc-700 py-2 text-xs font-medium text-zinc-200 transition hover:bg-zinc-800"
+        className="flex min-w-0 items-center justify-center gap-1 rounded-lg border border-zinc-700 px-1 py-2 text-[11px] font-medium text-zinc-200 transition hover:bg-zinc-800 sm:text-xs"
       >
         🚗 Waze
       </a>
       <button
+        type="button"
         onClick={() => downloadGpx(route, label)}
-        className="flex items-center justify-center gap-1.5 rounded-lg border border-zinc-700 py-2 text-xs font-medium text-zinc-200 transition hover:bg-zinc-800"
+        className="flex min-w-0 items-center justify-center gap-1 rounded-lg border border-zinc-700 px-1 py-2 text-[11px] font-medium text-zinc-200 transition hover:bg-zinc-800 sm:text-xs"
       >
         ⬇️ GPX
       </button>

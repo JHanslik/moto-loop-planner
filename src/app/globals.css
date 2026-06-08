@@ -12,7 +12,7 @@ body {
 }
 
 body {
-  @apply bg-zinc-950 text-zinc-100 antialiased;
+  @apply overflow-x-hidden bg-zinc-950 text-zinc-100 antialiased;
 }
 
 /* Leaflet renders inside dark panels — keep its controls/attribution legible. */
