@@ -26,7 +26,7 @@ async function resolveStart(
   const res = await fetch(url, {
     headers: {
       "User-Agent": "MotoLoopPlanner/1.0 (school project)",
-      "Accept-Language": "en",
+      "Accept-Language": "fr,en",
     },
     cache: "no-store",
   });

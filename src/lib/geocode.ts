@@ -1,53 +1,111 @@
 export interface Place {
+  id: string;
   label: string;
   lat: number;
   lng: number;
 }
 
-/** Build a readable, deduplicated label from Photon's address properties. */
-function formatPlace(p: any): string {
+type PhotonProps = {
+  osm_id?: number;
+  name?: string;
+  housenumber?: string;
+  street?: string;
+  locality?: string;
+  district?: string;
+  city?: string;
+  county?: string;
+  state?: string;
+  postcode?: string;
+  country?: string;
+  countrycode?: string;
+  type?: string;
+};
+
+/** Build a readable, deduplicated label from Photon address properties. */
+export function formatPlace(p: PhotonProps): string {
+  const streetLine = [p.housenumber, p.street].filter(Boolean).join(" ");
   const main =
     p.name ||
-    [p.housenumber, p.street].filter(Boolean).join(" ") ||
+    streetLine ||
+    p.locality ||
+    p.district ||
     p.city ||
     "";
-  const parts = [main, p.city, p.county, p.state, p.country].filter(
+
+  const tail = [p.postcode, p.city, p.county, p.state, p.country].filter(
     Boolean
   ) as string[];
-  // collapse consecutive duplicates (e.g. name === city)
-  return parts.filter((v, i, a) => i === 0 || v !== a[i - 1]).join(", ");
+
+  const parts = main ? [main, ...tail] : tail;
+  const deduped = parts.filter((v, i, a) => i === 0 || v !== a[i - 1]);
+  return deduped.join(", ");
+}
+
+function rankPlace(
+  props: PhotonProps,
+  label: string,
+  query: string
+): number {
+  const q = query.toLowerCase();
+  const name = label.split(",")[0]?.toLowerCase() ?? "";
+  let score = 0;
+  if (name.startsWith(q)) score -= 100;
+  else if (name.includes(q)) score -= 40;
+  if (props.countrycode === "FR") score -= 20;
+  if (props.type === "city" || props.type === "town") score -= 10;
+  return score;
+}
+
+/** Map Photon GeoJSON features to UI places (deduped, ranked for FR type-ahead). */
+export function photonFeaturesToPlaces(
+  features: unknown[],
+  query = ""
+): Place[] {
+  const seen = new Set<string>();
+  const candidates: { place: Place; rank: number }[] = [];
+
+  for (const raw of features) {
+    const f = raw as {
+      properties?: PhotonProps;
+      geometry?: { type?: string; coordinates?: [number, number] };
+    };
+    if (f?.geometry?.type !== "Point" || !f.geometry.coordinates) continue;
+
+    const props = f.properties ?? {};
+    const label = formatPlace(props);
+    if (!label) continue;
+
+    const [lng, lat] = f.geometry.coordinates;
+    const id = String(props.osm_id ?? `${lat},${lng}`);
+    const key = `${id}|${label}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    candidates.push({
+      place: { id, label, lng, lat },
+      rank: rankPlace(props, label, query),
+    });
+  }
+
+  return candidates
+    .sort((a, b) => a.rank - b.rank)
+    .slice(0, 6)
+    .map((c) => c.place);
 }
 
 /**
- * Address / place autocomplete via Photon (photon.komoot.io) — an OpenStreetMap
- * geocoder built for type-ahead search. No API key, CORS-enabled.
- * Returns up to 5 deduplicated suggestions, or [] on any failure/abort.
+ * Address autocomplete via our `/api/geocode` proxy (Photon server-side).
+ * Avoids browser CORS/rate-limit issues on photon.komoot.io.
  */
 export async function searchPlaces(
   query: string,
   signal?: AbortSignal
 ): Promise<Place[]> {
   const url =
-    "https://photon.komoot.io/api/?limit=6&lang=en&q=" +
-    encodeURIComponent(query);
+    "/api/geocode?q=" + encodeURIComponent(query.trim());
 
   const res = await fetch(url, { signal });
   if (!res.ok) return [];
   const data = await res.json();
-
-  const seen = new Set<string>();
-  const out: Place[] = [];
-  for (const f of data.features ?? []) {
-    if (f?.geometry?.type !== "Point") continue;
-    const label = formatPlace(f.properties);
-    if (!label || seen.has(label)) continue;
-    seen.add(label);
-    out.push({
-      label,
-      lng: f.geometry.coordinates[0],
-      lat: f.geometry.coordinates[1],
-    });
-    if (out.length >= 5) break;
-  }
-  return out;
+  return Array.isArray(data.places) ? data.places : [];
 }

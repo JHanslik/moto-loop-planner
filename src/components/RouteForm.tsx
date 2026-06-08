@@ -42,7 +42,7 @@ export default function RouteForm({
       return;
     }
     const q = start.trim();
-    if (q.length < 3 || COORD_RE.test(q)) {
+    if (q.length < 2 || COORD_RE.test(q)) {
       setSuggestions([]);
       setOpen(false);
       return;
@@ -95,9 +95,9 @@ export default function RouteForm({
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
       setActiveIndex((i) => Math.max(i - 1, 0));
-    } else if (e.key === "Enter" && activeIndex >= 0) {
-      e.preventDefault(); // select instead of submitting the form
-      pickPlace(suggestions[activeIndex]);
+    } else if (e.key === "Enter" && suggestions.length > 0) {
+      e.preventDefault(); // pick suggestion instead of submitting the form
+      pickPlace(suggestions[activeIndex >= 0 ? activeIndex : 0]);
     } else if (e.key === "Escape") {
       setOpen(false);
     }
@@ -136,7 +136,9 @@ export default function RouteForm({
               setStart(e.target.value);
               setSelected(null); // editing reverts to free-text geocoding
             }}
-            onFocus={() => suggestions.length > 0 && setOpen(true)}
+            onFocus={() => {
+              if (suggestions.length > 0) setOpen(true);
+            }}
             onKeyDown={onInputKeyDown}
             placeholder="City, address… or 45.188,5.724"
             autoComplete="off"
@@ -162,7 +164,7 @@ export default function RouteForm({
             >
               {suggestions.map((p, i) => (
                 <li
-                  key={`${p.lat},${p.lng}`}
+                  key={p.id}
                   role="option"
                   aria-selected={i === activeIndex}
                   onMouseDown={(e) => {
