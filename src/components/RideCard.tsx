@@ -115,7 +115,7 @@ export default function RideCard({
   };
 
   return (
-    <div className="min-w-0 overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
+    <div className="min-w-0 rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h3 className="truncate font-semibold">{ride.name}</h3>
