@@ -5,9 +5,6 @@ const fmt = (n: number) => n.toFixed(6);
 /**
  * Google Maps directions deep link for the loop.
  * origin = destination = start (it's a loop), the B/C/... points become waypoints.
- * Google supports a handful of waypoints on the free directions URL, which is
- * exactly what our loops produce.
- *   https://developers.google.com/maps/documentation/urls/get-started
  */
 export function googleMapsUrl(route: RouteResult): string {
   const start = `${fmt(route.start.lat)},${fmt(route.start.lng)}`;
@@ -20,17 +17,60 @@ export function googleMapsUrl(route: RouteResult): string {
     destination: start,
     travelmode: "driving",
   });
-  // URLSearchParams would percent-encode the "|" separator that Google expects raw.
   const base = `https://www.google.com/maps/dir/?${params.toString()}`;
   return waypoints ? `${base}&waypoints=${waypoints}` : base;
 }
 
+/** Single Waze destination deep link (motorcycle routing when supported). */
+export function wazeDestinationUrl(lat: number, lng: number): string {
+  const params = new URLSearchParams({
+    ll: `${fmt(lat)},${fmt(lng)}`,
+    navigate: "yes",
+    vehicle_type: "motorcycle",
+    utm_source: "moto-loop-planner",
+  });
+  return `https://waze.com/ul?${params.toString()}`;
+}
+
+export interface WazeLeg {
+  index: number;
+  fromLabel: string;
+  toLabel: string;
+  url: string;
+}
+
 /**
- * Waze deep link. Waze URLs navigate to a single destination, so for a multi-stop
- * loop we fall back to "ride to the first waypoint" (A → B) and let the rider take
- * it from there. https://developers.google.com/waze/deeplinks
+ * Waze deep links only support ONE destination per URL — no multi-waypoint API.
+ * We split the loop into legs (Départ → B → C → … → Départ) so the rider can
+ * open each segment in Waze sequentially.
  */
+export function wazeLegs(route: RouteResult): WazeLeg[] {
+  const startLabel = route.startName || "Départ";
+  const stops: { lat: number; lng: number; label: string }[] = [
+    { lat: route.start.lat, lng: route.start.lng, label: startLabel },
+    ...route.waypoints.map((w, i) => ({
+      lat: w.lat,
+      lng: w.lng,
+      label: w.name || `Point ${i + 1}`,
+    })),
+    { lat: route.start.lat, lng: route.start.lng, label: startLabel },
+  ];
+
+  const legs: WazeLeg[] = [];
+  for (let i = 0; i < stops.length - 1; i++) {
+    const to = stops[i + 1];
+    legs.push({
+      index: i + 1,
+      fromLabel: stops[i].label,
+      toLabel: to.label,
+      url: wazeDestinationUrl(to.lat, to.lng),
+    });
+  }
+  return legs;
+}
+
+/** @deprecated Use wazeLegs — Waze cannot open a full multi-stop route in one link. */
 export function wazeUrl(route: RouteResult): string {
-  const target = route.waypoints[0] ?? route.start;
-  return `https://waze.com/ul?ll=${fmt(target.lat)},${fmt(target.lng)}&navigate=yes`;
+  const legs = wazeLegs(route);
+  return legs[0]?.url ?? wazeDestinationUrl(route.start.lat, route.start.lng);
 }

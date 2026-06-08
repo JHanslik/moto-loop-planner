@@ -1,8 +1,9 @@
 "use client";
 
 import { downloadGpx } from "@/lib/gpx";
-import { googleMapsUrl, wazeUrl } from "@/lib/exportLinks";
+import { googleMapsUrl } from "@/lib/exportLinks";
 import type { RouteResult } from "@/lib/types";
+import WazeExportButton from "./WazeExportButton";
 
 export default function ExportButtons({
   route,
@@ -22,14 +23,7 @@ export default function ExportButtons({
       >
         🗺️ Google
       </a>
-      <a
-        href={wazeUrl(route)}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="flex min-w-0 items-center justify-center gap-1 rounded-lg border border-zinc-700 px-1 py-2 text-[11px] font-medium text-zinc-200 transition hover:bg-zinc-800 sm:text-xs"
-      >
-        🚗 Waze
-      </a>
+      <WazeExportButton route={route} />
       <button
         type="button"
         onClick={() => downloadGpx(route, label)}
