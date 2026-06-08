@@ -72,11 +72,37 @@ create table if not exists public.comments (
 );
 create index if not exists comments_ride_id_idx on public.comments (ride_id);
 
--- 5. ROW LEVEL SECURITY ------------------------------------------------------
-alter table public.profiles enable row level security;
-alter table public.rides    enable row level security;
-alter table public.likes    enable row level security;
-alter table public.comments enable row level security;
+-- 5. RIDE GROUPS (Group Ride) ------------------------------------------------
+create table if not exists public.ride_groups (
+  id             uuid primary key default gen_random_uuid(),
+  name           text not null,
+  invite_code    text not null unique,
+  leader_id      uuid not null references public.profiles (id) on delete cascade,
+  ride_id        uuid references public.rides (id) on delete set null,
+  route_geojson  jsonb,
+  is_active      boolean not null default true,
+  created_at     timestamptz not null default now()
+);
+create index if not exists ride_groups_leader_idx on public.ride_groups (leader_id);
+create index if not exists ride_groups_invite_idx on public.ride_groups (invite_code);
+
+create table if not exists public.group_members (
+  group_id           uuid not null references public.ride_groups (id) on delete cascade,
+  user_id            uuid not null references public.profiles (id) on delete cascade,
+  role               text not null default 'member' check (role in ('leader', 'member')),
+  sharing_location   boolean not null default false,
+  joined_at          timestamptz not null default now(),
+  primary key (group_id, user_id)
+);
+create index if not exists group_members_user_idx on public.group_members (user_id);
+
+-- 6. ROW LEVEL SECURITY ------------------------------------------------------
+alter table public.profiles      enable row level security;
+alter table public.rides         enable row level security;
+alter table public.likes         enable row level security;
+alter table public.comments      enable row level security;
+alter table public.ride_groups   enable row level security;
+alter table public.group_members enable row level security;
 
 -- profiles: world-readable, self-writable
 drop policy if exists "profiles readable by all" on public.profiles;
@@ -122,7 +148,54 @@ drop policy if exists "delete own comments" on public.comments;
 create policy "delete own comments"
   on public.comments for delete using (auth.uid() = user_id);
 
--- 6. FEED VIEW ---------------------------------------------------------------
+-- ride_groups: members read; anyone can read active groups by invite code; leader manages
+drop policy if exists "group members can read group" on public.ride_groups;
+create policy "group members can read group"
+  on public.ride_groups for select using (
+    exists (
+      select 1 from public.group_members gm
+      where gm.group_id = ride_groups.id and gm.user_id = auth.uid()
+    )
+  );
+drop policy if exists "read group by invite code" on public.ride_groups;
+create policy "read group by invite code"
+  on public.ride_groups for select using (is_active = true);
+drop policy if exists "authenticated users can create groups" on public.ride_groups;
+create policy "authenticated users can create groups"
+  on public.ride_groups for insert with check (auth.uid() = leader_id);
+drop policy if exists "leader can update group" on public.ride_groups;
+create policy "leader can update group"
+  on public.ride_groups for update using (auth.uid() = leader_id);
+drop policy if exists "leader can delete group" on public.ride_groups;
+create policy "leader can delete group"
+  on public.ride_groups for delete using (auth.uid() = leader_id);
+
+-- group_members: members see each other; self-join; self-update sharing; leave or leader kick
+drop policy if exists "members can read membership" on public.group_members;
+create policy "members can read membership"
+  on public.group_members for select using (
+    exists (
+      select 1 from public.group_members gm
+      where gm.group_id = group_members.group_id and gm.user_id = auth.uid()
+    )
+  );
+drop policy if exists "users can join groups" on public.group_members;
+create policy "users can join groups"
+  on public.group_members for insert with check (auth.uid() = user_id);
+drop policy if exists "users can update own membership" on public.group_members;
+create policy "users can update own membership"
+  on public.group_members for update using (auth.uid() = user_id);
+drop policy if exists "users can leave groups" on public.group_members;
+create policy "users can leave groups"
+  on public.group_members for delete using (
+    auth.uid() = user_id
+    or exists (
+      select 1 from public.ride_groups g
+      where g.id = group_members.group_id and g.leader_id = auth.uid()
+    )
+  );
+
+-- 7. FEED VIEW ---------------------------------------------------------------
 -- Rides enriched with author name + like/comment counts. security_invoker = on
 -- makes the view honor the querying user's RLS (so private rides stay private).
 create or replace view public.ride_feed
@@ -135,11 +208,13 @@ select
 from public.rides r
 left join public.profiles p on p.id = r.user_id;
 
--- 7. GRANTS ------------------------------------------------------------------
+-- 8. GRANTS ------------------------------------------------------------------
 -- Supabase usually sets these via default privileges, but we make them explicit
 -- so the schema works regardless of project age. RLS still governs every row.
 grant usage on schema public to anon, authenticated;
-grant select on public.profiles, public.rides, public.likes, public.comments to anon, authenticated;
+grant select on public.profiles, public.rides, public.likes, public.comments,
+  public.ride_groups, public.group_members to anon, authenticated;
 grant insert, update, delete on public.rides, public.likes, public.comments to authenticated;
+grant insert, update, delete on public.ride_groups, public.group_members to authenticated;
 grant update on public.profiles to authenticated;
 grant select on public.ride_feed to anon, authenticated;

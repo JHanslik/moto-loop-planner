@@ -34,6 +34,16 @@ const links = [
       </svg>
     ),
   },
+  {
+    href: "/groups",
+    label: "Groups",
+    icon: (
+      <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
+        <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />
+      </svg>
+    ),
+    prefixMatch: true,
+  },
 ];
 
 function HamburgerIcon({ open }: { open: boolean }) {
@@ -253,7 +263,11 @@ export default function Navbar() {
               href={l.href}
               label={l.label}
               icon={l.icon}
-              active={pathname === l.href}
+              active={
+                "prefixMatch" in l && l.prefixMatch
+                  ? pathname.startsWith(l.href)
+                  : pathname === l.href
+              }
             />
           ))}
         </div>
@@ -304,7 +318,11 @@ export default function Navbar() {
               href={l.href}
               label={l.label}
               icon={l.icon}
-              active={pathname === l.href}
+              active={
+                "prefixMatch" in l && l.prefixMatch
+                  ? pathname.startsWith(l.href)
+                  : pathname === l.href
+              }
               mobile
               index={i}
               menuOpen={open}

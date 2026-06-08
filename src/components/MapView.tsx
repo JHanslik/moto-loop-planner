@@ -11,21 +11,23 @@ import {
   TileLayer,
   useMap,
 } from "react-leaflet";
+import { memberColor } from "@/lib/groups";
+import type { MemberLocation } from "@/lib/groups";
 import type { LatLng, Waypoint } from "@/lib/types";
 
-function makeIcon(label: string, color: string) {
+function makeIcon(label: string, color: string, size = 26) {
   return L.divIcon({
     className: "",
-    html: `<div class="moto-marker" style="width:26px;height:26px;background:${color};border:2px solid #18181b">${label}</div>`,
-    iconSize: [26, 26],
-    iconAnchor: [13, 13],
+    html: `<div class="moto-marker" style="width:${size}px;height:${size}px;background:${color};border:2px solid #18181b;font-size:${size < 30 ? 11 : 12}px">${label}</div>`,
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
   });
 }
 
 const startIcon = makeIcon("S", "#f97316");
 const wpIcon = (i: number) => makeIcon(String(i + 1), "#3f3f46");
+const selfIcon = makeIcon("●", "#f97316", 30);
 
-/** Fit the map to the route whenever it changes. */
 function FitBounds({ positions }: { positions: [number, number][] }) {
   const map = useMap();
   useEffect(() => {
@@ -38,11 +40,25 @@ function FitBounds({ positions }: { positions: [number, number][] }) {
   return null;
 }
 
+/** Follow the rider position during live navigation. */
+function FollowRider({ position }: { position: LatLng | null }) {
+  const map = useMap();
+  useEffect(() => {
+    if (position) {
+      map.panTo([position.lat, position.lng], { animate: true });
+    }
+  }, [position, map]);
+  return null;
+}
+
 interface MapViewProps {
-  geometry: [number, number][]; // [lng, lat]
+  geometry: [number, number][];
   waypoints: Waypoint[];
   start: LatLng | null;
   animate?: boolean;
+  members?: MemberLocation[];
+  selfPosition?: LatLng | null;
+  followSelf?: boolean;
 }
 
 export default function MapView({
@@ -50,8 +66,10 @@ export default function MapView({
   waypoints,
   start,
   animate = true,
+  members = [],
+  selfPosition = null,
+  followSelf = false,
 }: MapViewProps) {
-  // Leaflet wants [lat, lng]; our geometry is [lng, lat].
   const positions = useMemo(
     () => geometry.map((c) => [c[1], c[0]] as [number, number]),
     [geometry]
@@ -61,7 +79,6 @@ export default function MapView({
     animate ? 0 : positions.length
   );
 
-  // Progressive "draw" animation of the polyline.
   useEffect(() => {
     if (!animate || positions.length === 0) {
       setShownCount(positions.length);
@@ -78,19 +95,21 @@ export default function MapView({
     return () => clearInterval(id);
   }, [positions, animate]);
 
-  const center: [number, number] = start
-    ? [start.lat, start.lng]
-    : positions[0] ?? [46.6, 2.4]; // fallback: center of France
+  const center: [number, number] = selfPosition
+    ? [selfPosition.lat, selfPosition.lng]
+    : start
+      ? [start.lat, start.lng]
+      : positions[0] ?? [46.6, 2.4];
 
   return (
     <MapContainer
       center={center}
-      zoom={11}
+      zoom={followSelf ? 14 : 11}
       scrollWheelZoom
       className="h-full w-full"
     >
       <TileLayer
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
 
@@ -101,7 +120,7 @@ export default function MapView({
         />
       )}
 
-      {start && (
+      {start && !selfPosition && (
         <Marker position={[start.lat, start.lng]} icon={startIcon}>
           <Popup>Start / Finish</Popup>
         </Marker>
@@ -113,7 +132,38 @@ export default function MapView({
         </Marker>
       ))}
 
-      <FitBounds positions={positions} />
+      {members.map((m) => (
+        <Marker
+          key={m.userId}
+          position={[m.lat, m.lng]}
+          icon={makeIcon(
+            m.name.charAt(0).toUpperCase(),
+            memberColor(m.userId),
+            28
+          )}
+        >
+          <Popup>
+            <strong>{m.name}</strong>
+            {m.speed != null && m.speed > 0 && (
+              <div className="text-xs">
+                {(m.speed * 3.6).toFixed(0)} km/h
+              </div>
+            )}
+          </Popup>
+        </Marker>
+      ))}
+
+      {selfPosition && (
+        <Marker
+          position={[selfPosition.lat, selfPosition.lng]}
+          icon={selfIcon}
+        >
+          <Popup>Vous</Popup>
+        </Marker>
+      )}
+
+      {followSelf && selfPosition && <FollowRider position={selfPosition} />}
+      {!followSelf && <FitBounds positions={positions} />}
     </MapContainer>
   );
 }
