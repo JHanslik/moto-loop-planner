@@ -42,6 +42,22 @@ type NominatimItem = {
   address?: NominatimAddress;
 };
 
+type BanProps = {
+  id?: string;
+  banId?: string;
+  label?: string;
+  name?: string;
+  housenumber?: string;
+  street?: string;
+  postcode?: string;
+  city?: string;
+  context?: string;
+  type?: string;
+  score?: number;
+};
+
+const BAN_RANK_BOOST = -200;
+
 const STOP_WORDS = new Set([
   "de",
   "du",
@@ -230,6 +246,64 @@ export function photonFeaturesToPlaces(
     .map((c) => c.place);
 }
 
+/** Map API Adresse (BAN) GeoJSON features to UI places. */
+export function banFeaturesToPlaces(
+  features: unknown[],
+  query = ""
+): Place[] {
+  const seen = new Set<string>();
+  const candidates: { place: Place; rank: number }[] = [];
+
+  for (const raw of features) {
+    const f = raw as {
+      properties?: BanProps;
+      geometry?: { type?: string; coordinates?: [number, number] };
+    };
+    if (f?.geometry?.type !== "Point" || !f.geometry.coordinates) continue;
+
+    const props = f.properties ?? {};
+    const label =
+      props.label ||
+      formatPlace({
+        housenumber: props.housenumber,
+        street: props.street,
+        city: props.city,
+        postcode: props.postcode,
+        country: "France",
+        countrycode: "FR",
+      });
+    if (!label) continue;
+
+    const [lng, lat] = f.geometry.coordinates;
+    const id = `ban-${props.id ?? props.banId ?? `${lat},${lng}`}`;
+    const key = `${id}|${label}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    const pseudo: PhotonProps = {
+      housenumber: props.housenumber,
+      street: props.street,
+      city: props.city,
+      postcode: props.postcode,
+      countrycode: "FR",
+      type: props.type === "housenumber" ? "house" : props.type,
+    };
+
+    const apiScore = typeof props.score === "number" ? props.score : 0;
+    candidates.push({
+      place: { id, label, lng, lat },
+      rank:
+        rankPlace(pseudo, label, query) +
+        BAN_RANK_BOOST -
+        Math.round(apiScore * 50),
+    });
+  }
+
+  return candidates
+    .sort((a, b) => a.rank - b.rank)
+    .map((c) => c.place);
+}
+
 export function nominatimToPlaces(items: NominatimItem[], query = ""): Place[] {
   const seen = new Set<string>();
   const candidates: { place: Place; rank: number }[] = [];
@@ -297,7 +371,7 @@ export function mergePlaces(
 }
 
 /**
- * Address autocomplete via `/api/geocode` (Photon + Nominatim server-side).
+ * Address autocomplete via `/api/geocode` (BAN + Photon + Nominatim server-side).
  */
 export async function searchPlaces(
   query: string,
