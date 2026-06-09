@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import Link from "next/link";
+import { useState, type ReactNode } from "react";
+import RidePreviewModal from "@/components/RidePreviewModal";
 import { supabase } from "@/lib/supabaseClient";
 import { STYLES, type Comment, type Ride } from "@/lib/types";
 import ExportButtons from "./ExportButtons";
@@ -10,26 +12,30 @@ export default function RideCard({
   ride,
   currentUserId,
   likedByMe = false,
+  alreadyForked = false,
   mode,
   onChange,
 }: {
   ride: Ride;
   currentUserId?: string | null;
   likedByMe?: boolean;
+  alreadyForked?: boolean;
   mode: "feed" | "mine";
   onChange?: () => void;
 }) {
   const style = STYLES.find((s) => s.id === ride.style);
+  const isOwner = !!currentUserId && ride.user_id === currentUserId;
   const [liked, setLiked] = useState(likedByMe);
   const [likeCount, setLikeCount] = useState(ride.like_count ?? 0);
   const [showComments, setShowComments] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
   const [comments, setComments] = useState<Comment[]>([]);
   const [newComment, setNewComment] = useState("");
   const [busy, setBusy] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const [saved, setSaved] = useState(alreadyForked);
 
   const toggleLike = async () => {
-    if (!supabase || !currentUserId) return;
+    if (!supabase || !currentUserId || isOwner) return;
     const next = !liked;
     setLiked(next);
     setLikeCount((c) => c + (next ? 1 : -1));
@@ -68,18 +74,20 @@ export default function RideCard({
   const addComment = async () => {
     if (!supabase || !currentUserId || !newComment.trim()) return;
     setBusy(true);
-    await supabase
-      .from("comments")
-      .insert({ ride_id: ride.id, user_id: currentUserId, content: newComment.trim() });
+    await supabase.from("comments").insert({
+      ride_id: ride.id,
+      user_id: currentUserId,
+      content: newComment.trim(),
+    });
     setNewComment("");
     await loadComments();
     setBusy(false);
   };
 
   const saveToMyRides = async () => {
-    if (!supabase || !currentUserId) return;
+    if (!supabase || !currentUserId || isOwner || saved) return;
     setBusy(true);
-    await supabase.from("rides").insert({
+    const { error } = await supabase.from("rides").insert({
       user_id: currentUserId,
       name: ride.name,
       distance_km: ride.distance_km,
@@ -89,8 +97,13 @@ export default function RideCard({
       style: ride.style,
       start_name: ride.start_name,
       is_public: false,
+      forked_from_ride_id: ride.id,
+      source_author_name: ride.author_name ?? null,
     });
-    setSaved(true);
+    if (!error) {
+      setSaved(true);
+      onChange?.();
+    }
     setBusy(false);
   };
 
@@ -107,131 +120,184 @@ export default function RideCard({
 
   const deleteRide = async () => {
     if (!supabase) return;
-    if (!confirm("Delete this ride?")) return;
+    if (!confirm("Supprimer cette ride ?")) return;
     setBusy(true);
     await supabase.from("rides").delete().eq("id", ride.id);
     setBusy(false);
     onChange?.();
   };
 
+  const saveFooter: ReactNode =
+    mode === "feed" && currentUserId && !isOwner ? (
+      <button
+        type="button"
+        onClick={saveToMyRides}
+        disabled={busy || saved}
+        className="w-full rounded-xl bg-brand py-3 font-semibold text-white hover:bg-brand-dark disabled:opacity-50"
+      >
+        {saved ? "✓ Déjà dans mes rides" : `Ajouter à mes rides`}
+      </button>
+    ) : null;
+
   return (
-    <div className="min-w-0 rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h3 className="truncate font-semibold">{ride.name}</h3>
-          <p className="truncate text-xs text-zinc-500">
-            {style ? `${style.emoji} ${style.label}` : ""}
-            {ride.start_name ? ` · from ${ride.start_name}` : ""}
-            {mode === "feed" && ride.author_name ? ` · by ${ride.author_name}` : ""}
-          </p>
+    <>
+      <div className="min-w-0 rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h3 className="truncate font-semibold">{ride.name}</h3>
+            <p className="truncate text-xs text-zinc-500">
+              {style ? `${style.emoji} ${style.label}` : ""}
+              {ride.start_name ? ` · ${ride.start_name}` : ""}
+              {mode === "feed" && ride.author_name && !isOwner
+                ? ` · par ${ride.author_name}`
+                : ""}
+              {mode === "feed" && isOwner ? " · votre publication" : ""}
+              {mode === "mine" && ride.source_author_name
+                ? ` · partagé par ${ride.source_author_name}`
+                : ""}
+            </p>
+          </div>
+          <div className="shrink-0 rounded-lg bg-brand/10 px-2.5 py-1 text-sm font-bold text-brand">
+            {ride.score}
+          </div>
         </div>
-        <div className="shrink-0 rounded-lg bg-brand/10 px-2.5 py-1 text-sm font-bold text-brand">
-          {ride.score}
+
+        <div className="mt-3 flex gap-4 text-sm text-zinc-300">
+          <span>📏 {ride.distance_km} km</span>
+          <span>⏱️ {ride.duration_min} min</span>
         </div>
-      </div>
 
-      <div className="mt-3 flex gap-4 text-sm text-zinc-300">
-        <span>📏 {ride.distance_km} km</span>
-        <span>⏱️ {ride.duration_min} min</span>
-      </div>
+        <button
+          type="button"
+          onClick={() => setShowPreview(true)}
+          className="mt-3 w-full rounded-lg border border-zinc-700 bg-zinc-800/50 py-2 text-sm font-medium text-zinc-200 transition hover:border-brand/40 hover:bg-zinc-800"
+        >
+          🗺️ Voir la carte
+        </button>
 
-      <div className="mt-3 space-y-2">
-        <StartNavigationButton
-          route={ride.route_geojson}
-          label={ride.name}
-          rideId={ride.id}
-        />
-        <ExportButtons route={ride.route_geojson} name={ride.name} />
-      </div>
+        <div className="mt-2 space-y-2">
+          <StartNavigationButton
+            route={ride.route_geojson}
+            label={ride.name}
+            rideId={ride.id}
+          />
+          <ExportButtons route={ride.route_geojson} name={ride.name} />
+        </div>
 
-      <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
-        {mode === "feed" && (
-          <>
-            <button
-              onClick={toggleLike}
-              disabled={!currentUserId}
-              title={currentUserId ? "" : "Sign in to like"}
-              className={`rounded-lg border px-2.5 py-1 transition disabled:opacity-50 ${
-                liked
-                  ? "border-brand bg-brand/10 text-brand"
-                  : "border-zinc-700 text-zinc-300 hover:bg-zinc-800"
-              }`}
-            >
-              ❤️ {likeCount}
-            </button>
-            <button
-              onClick={toggleComments}
-              className="rounded-lg border border-zinc-700 px-2.5 py-1 text-zinc-300 transition hover:bg-zinc-800"
-            >
-              💬 {ride.comment_count ?? 0}
-            </button>
-            {currentUserId && (
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+          {mode === "feed" && (
+            <>
+              {isOwner ? (
+                <Link
+                  href="/rides"
+                  className="rounded-lg border border-brand/30 bg-brand/10 px-2.5 py-1 text-brand"
+                >
+                  Votre ride
+                </Link>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={toggleLike}
+                    disabled={!currentUserId}
+                    title={currentUserId ? "" : "Connectez-vous pour liker"}
+                    className={`rounded-lg border px-2.5 py-1 transition disabled:opacity-50 ${
+                      liked
+                        ? "border-brand bg-brand/10 text-brand"
+                        : "border-zinc-700 text-zinc-300 hover:bg-zinc-800"
+                    }`}
+                  >
+                    ❤️ {likeCount}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={toggleComments}
+                    className="rounded-lg border border-zinc-700 px-2.5 py-1 text-zinc-300 transition hover:bg-zinc-800"
+                  >
+                    💬 {ride.comment_count ?? 0}
+                  </button>
+                  {currentUserId && (
+                    <button
+                      type="button"
+                      onClick={saveToMyRides}
+                      disabled={busy || saved}
+                      className="rounded-lg border border-zinc-700 px-2.5 py-1 text-zinc-300 transition hover:bg-zinc-800 disabled:opacity-50"
+                    >
+                      {saved ? "✓ Sauvegardée" : "💾 Ajouter"}
+                    </button>
+                  )}
+                </>
+              )}
+            </>
+          )}
+
+          {mode === "mine" && (
+            <>
               <button
-                onClick={saveToMyRides}
-                disabled={busy || saved}
+                type="button"
+                onClick={togglePublic}
+                disabled={busy}
                 className="rounded-lg border border-zinc-700 px-2.5 py-1 text-zinc-300 transition hover:bg-zinc-800 disabled:opacity-50"
               >
-                {saved ? "✓ Saved" : "💾 Save to my rides"}
+                {ride.is_public ? "🌍 Public" : "🔒 Privé"}
               </button>
-            )}
-          </>
-        )}
+              <button
+                type="button"
+                onClick={deleteRide}
+                disabled={busy}
+                className="rounded-lg border border-red-900/60 px-2.5 py-1 text-red-400 transition hover:bg-red-950/40 disabled:opacity-50"
+              >
+                🗑️ Supprimer
+              </button>
+            </>
+          )}
+        </div>
 
-        {mode === "mine" && (
-          <>
-            <button
-              onClick={togglePublic}
-              disabled={busy}
-              className="rounded-lg border border-zinc-700 px-2.5 py-1 text-zinc-300 transition hover:bg-zinc-800 disabled:opacity-50"
-            >
-              {ride.is_public ? "🌍 Public" : "🔒 Private"}
-            </button>
-            <button
-              onClick={deleteRide}
-              disabled={busy}
-              className="rounded-lg border border-red-900/60 px-2.5 py-1 text-red-400 transition hover:bg-red-950/40 disabled:opacity-50"
-            >
-              🗑️ Delete
-            </button>
-          </>
+        {showComments && (
+          <div className="mt-3 space-y-2 border-t border-zinc-800 pt-3">
+            {comments.length === 0 && (
+              <p className="text-xs text-zinc-500">Aucun commentaire.</p>
+            )}
+            {comments.map((c) => (
+              <div key={c.id} className="text-sm">
+                <span className="font-medium text-zinc-300">
+                  {c.author_name ?? "Rider"}
+                </span>{" "}
+                <span className="text-zinc-400">{c.content}</span>
+              </div>
+            ))}
+            {currentUserId ? (
+              <div className="flex gap-2 pt-1">
+                <input
+                  value={newComment}
+                  onChange={(e) => setNewComment(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && addComment()}
+                  placeholder="Commenter…"
+                  className="min-w-0 flex-1 rounded-lg border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 text-sm outline-none focus:border-brand"
+                />
+                <button
+                  type="button"
+                  onClick={addComment}
+                  disabled={busy || !newComment.trim()}
+                  className="rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+                >
+                  Envoyer
+                </button>
+              </div>
+            ) : (
+              <p className="text-xs text-zinc-500">Connectez-vous pour commenter.</p>
+            )}
+          </div>
         )}
       </div>
 
-      {showComments && (
-        <div className="mt-3 space-y-2 border-t border-zinc-800 pt-3">
-          {comments.length === 0 && (
-            <p className="text-xs text-zinc-500">No comments yet.</p>
-          )}
-          {comments.map((c) => (
-            <div key={c.id} className="text-sm">
-              <span className="font-medium text-zinc-300">
-                {c.author_name ?? "Rider"}
-              </span>{" "}
-              <span className="text-zinc-400">{c.content}</span>
-            </div>
-          ))}
-          {currentUserId ? (
-            <div className="flex gap-2 pt-1">
-              <input
-                value={newComment}
-                onChange={(e) => setNewComment(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && addComment()}
-                placeholder="Add a comment…"
-                className="flex-1 rounded-lg border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 text-sm outline-none focus:border-brand"
-              />
-              <button
-                onClick={addComment}
-                disabled={busy || !newComment.trim()}
-                className="rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
-              >
-                Post
-              </button>
-            </div>
-          ) : (
-            <p className="text-xs text-zinc-500">Sign in to comment.</p>
-          )}
-        </div>
+      {showPreview && (
+        <RidePreviewModal
+          ride={ride}
+          onClose={() => setShowPreview(false)}
+          footer={saveFooter}
+        />
       )}
-    </div>
+    </>
   );
 }

@@ -10,6 +10,7 @@ export default function CommunityPage() {
   const { user } = useAuth();
   const [rides, setRides] = useState<Ride[]>([]);
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
+  const [forkedIds, setForkedIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
 
   const [styleFilter, setStyleFilter] = useState<RideStyle | "">("");
@@ -36,13 +37,25 @@ export default function CommunityPage() {
     setRides((data ?? []) as Ride[]);
 
     if (user) {
-      const { data: likes } = await supabase
-        .from("likes")
-        .select("ride_id")
-        .eq("user_id", user.id);
-      setLikedIds(new Set((likes ?? []).map((l: any) => l.ride_id)));
+      const [{ data: likes }, { data: forks }] = await Promise.all([
+        supabase.from("likes").select("ride_id").eq("user_id", user.id),
+        supabase
+          .from("rides")
+          .select("forked_from_ride_id")
+          .eq("user_id", user.id)
+          .not("forked_from_ride_id", "is", null),
+      ]);
+      setLikedIds(new Set((likes ?? []).map((l: { ride_id: string }) => l.ride_id)));
+      setForkedIds(
+        new Set(
+          (forks ?? [])
+            .map((f: { forked_from_ride_id: string | null }) => f.forked_from_ride_id)
+            .filter(Boolean) as string[]
+        )
+      );
     } else {
       setLikedIds(new Set());
+      setForkedIds(new Set());
     }
     setLoading(false);
   }, [styleFilter, maxDist, sort, user]);
@@ -124,6 +137,7 @@ export default function CommunityPage() {
               ride={r}
               currentUserId={user?.id}
               likedByMe={likedIds.has(r.id)}
+              alreadyForked={forkedIds.has(r.id)}
               mode="feed"
               onChange={load}
             />

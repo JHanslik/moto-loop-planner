@@ -38,19 +38,24 @@ export async function fetchPois(
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < TTL_MS) return hit.pois;
 
-  // Scenic riders also get peaks/saddles; everyone gets villages, views, castles.
+  // POIs on small roads: villages, viewpoints, nature — avoid routing via N/A axes.
   const scenicExtra =
     style === "SCENIC"
-      ? `\n  node["natural"~"peak|saddle"](around:${r},${lat},${lng});`
+      ? `\n  node["natural"~"peak|saddle|cliff"](around:${r},${lat},${lng});`
+      : "";
+  const chillExtra =
+    style === "CHILL"
+      ? `\n  node["leisure"~"picnic_site|park"](around:${r},${lat},${lng});`
       : "";
 
   const query = `[out:json][timeout:25];
 (
-  node["place"~"village|hamlet"](around:${r},${lat},${lng});
-  node["tourism"="viewpoint"](around:${r},${lat},${lng});
-  node["historic"="castle"](around:${r},${lat},${lng});${scenicExtra}
+  node["place"~"village|hamlet|locality"](around:${r},${lat},${lng});
+  node["tourism"~"viewpoint|attraction"](around:${r},${lat},${lng});
+  node["historic"~"castle|ruins|monument"](around:${r},${lat},${lng});
+  node["natural"~"wood|forest|water"](around:${r},${lat},${lng});${scenicExtra}${chillExtra}
 );
-out body 150;`;
+out body 200;`;
 
   try {
     const res = await fetch(OVERPASS_URL, {

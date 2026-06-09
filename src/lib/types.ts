@@ -59,6 +59,9 @@ export interface Ride {
   style: RideStyle | null;
   start_name: string | null;
   created_at: string;
+  /** Set when saved from the community feed (fork of someone else's public ride). */
+  forked_from_ride_id?: string | null;
+  source_author_name?: string | null;
   // present only when read from the `ride_feed` view:
   author_name?: string | null;
   like_count?: number;

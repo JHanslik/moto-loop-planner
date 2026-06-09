@@ -66,7 +66,7 @@ function buildWaypoints(
       let db = Math.abs(((bearing(start, p) - sectorCenter + 540) % 360) - 180);
       if (db > half + 8) continue; // outside this sector
       const distKm = haversine(start, p) / 1000;
-      if (distKm < ringKm * 0.45 || distKm > ringKm * 1.25) continue; // outside ring band
+      if (distKm < ringKm * 0.5 || distKm > ringKm * 1.15) continue; // tighter ring → more rural
       const ringErr = Math.abs(distKm - ringKm) / ringKm;
       const score = (db / half) * 0.5 + ringErr;
       if (score < bestScore) {
@@ -118,7 +118,7 @@ export async function generateLoop(
     pool = [];
   }
 
-  const NUM_CANDIDATES = 8;
+  const NUM_CANDIDATES = 12;
   const specs = Array.from({ length: NUM_CANDIDATES }, (_, i) => ({
     points: i % 3 === 2 ? 4 : 3, // mix triangle & quad loops
     rotation: Math.random() * 360,
@@ -158,16 +158,31 @@ export async function generateLoop(
     };
 
     const namedCount = waypoints.filter((w) => w.name).length;
-    // prefer loops that actually visit POIs, without overriding genuine quality
-    const selectionScore = score + Math.min(namedCount, 4) * 4;
-    return { result, selectionScore };
+    const fastRoads =
+      breakdown.highwayFraction + breakdown.mainRoadFraction;
+    // Strongly prefer scenic secondary roads over A/N axes when picking the winner.
+    const selectionScore =
+      score +
+      Math.min(namedCount, 4) * 5 -
+      fastRoads * 55;
+    return { result, selectionScore, fastRoads };
   });
 
   const valid = built.filter(
-    (b): b is { result: RouteResult; selectionScore: number } => b !== null
+    (
+      b
+    ): b is {
+      result: RouteResult;
+      selectionScore: number;
+      fastRoads: number;
+    } => b !== null
   );
   if (!valid.length) return null;
 
-  valid.sort((a, b) => b.selectionScore - a.selectionScore);
-  return valid[0].result;
+  // Drop candidates that are mostly nationales/autoroutes when alternatives exist.
+  const scenic = valid.filter((b) => b.fastRoads <= 0.55);
+  const shortlist = scenic.length > 0 ? scenic : valid;
+
+  shortlist.sort((a, b) => b.selectionScore - a.selectionScore);
+  return shortlist[0].result;
 }

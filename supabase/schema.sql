@@ -48,11 +48,15 @@ create table if not exists public.rides (
   is_public     boolean not null default false,
   rating        integer check (rating between 1 and 5),
   style         text check (style in ('SPORT', 'SCENIC', 'CHILL')),
-  start_name    text,
-  created_at    timestamptz not null default now()
+  start_name           text,
+  forked_from_ride_id  uuid references public.rides (id) on delete set null,
+  source_author_name   text,
+  created_at           timestamptz not null default now()
 );
 create index if not exists rides_user_id_idx on public.rides (user_id);
 create index if not exists rides_public_idx on public.rides (is_public) where is_public;
+create index if not exists rides_forked_from_idx on public.rides (user_id, forked_from_ride_id)
+  where forked_from_ride_id is not null;
 
 -- 3. LIKES -------------------------------------------------------------------
 create table if not exists public.likes (

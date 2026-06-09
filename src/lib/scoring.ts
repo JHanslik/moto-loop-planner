@@ -2,9 +2,9 @@ import { bearing } from "./geo";
 import type { OsrmRoute } from "./osrm";
 import type { RideStyle, ScoreBreakdown } from "./types";
 
-// Speed thresholds (m/s) used to infer road class from OSRM segment speeds.
-const MOTORWAY_SPEED = 28; // ~101 km/h — autoroute / voie rapide
-const MAIN_ROAD_SPEED = 19.5; // ~70 km/h — nationale / fast main road
+// Speed thresholds (m/s) — tuned to catch more nationales / axes rapides on OSRM "driving".
+const MOTORWAY_SPEED = 26; // ~94 km/h — autoroute / voie express
+const MAIN_ROAD_SPEED = 16.5; // ~59 km/h — nationale / départementale rapide
 
 /** Sum of absolute heading changes along the geometry, in degrees. The core "twistiness" signal. */
 function totalTurning(coords: [number, number][]): number {
@@ -61,7 +61,9 @@ export function scoreRoute(
 
   const twistiness = clamp01(turnsPerKm / 60);
   const { highway, main } = roadFractions(route);
-  const smallRoads = clamp01(1 - highway - main);
+  const fastRoads = highway + main;
+  // Amplify penalty for A/N segments — linear 1-fastRoads wasn't harsh enough.
+  const smallRoads = clamp01(1 - fastRoads * 1.35);
   const distanceMatch = clamp01(1 - Math.abs(distanceKm - targetKm) / targetKm);
   const elevNorm =
     elevationGainM !== undefined
@@ -71,28 +73,32 @@ export function scoreRoute(
   let fun: number;
   switch (style) {
     case "SPORT":
-      fun = 100 * (0.4 * twistiness + 0.25 * distanceMatch + 0.35 * smallRoads);
+      fun =
+        100 *
+        (0.32 * twistiness + 0.18 * distanceMatch + 0.5 * smallRoads);
       break;
     case "SCENIC":
       fun =
         elevNorm !== undefined
           ? 100 *
-            (0.25 * twistiness +
-              0.2 * distanceMatch +
-              0.3 * smallRoads +
-              0.25 * elevNorm)
-          : 100 * (0.35 * twistiness + 0.3 * distanceMatch + 0.35 * smallRoads);
+            (0.2 * twistiness +
+              0.15 * distanceMatch +
+              0.45 * smallRoads +
+              0.2 * elevNorm)
+          : 100 * (0.25 * twistiness + 0.2 * distanceMatch + 0.55 * smallRoads);
       break;
     case "CHILL":
     default: {
-      // reward moderate twistiness (peak ~0.4), not white-knuckle roads
       const chillTwist = 1 - Math.abs(twistiness - 0.4) / 0.6;
       fun =
         100 *
-        (0.3 * distanceMatch + 0.45 * smallRoads + 0.25 * Math.max(0, chillTwist));
+        (0.2 * distanceMatch + 0.55 * smallRoads + 0.25 * Math.max(0, chillTwist));
       break;
     }
   }
+
+  // Hard malus when the loop is mostly on fast roads — keeps worst A/N candidates out.
+  if (fastRoads > 0.45) fun *= 1 - (fastRoads - 0.45) * 1.4;
 
   return {
     score: Math.round(clamp01(fun / 100) * 100),

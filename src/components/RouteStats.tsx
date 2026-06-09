@@ -21,6 +21,8 @@ export default function RouteStats({ route }: { route: RouteResult }) {
   const style = STYLES.find((s) => s.id === route.style);
   const smallRoads =
     1 - route.breakdown.highwayFraction - route.breakdown.mainRoadFraction;
+  const fastRoads =
+    route.breakdown.highwayFraction + route.breakdown.mainRoadFraction;
   const highlights = route.waypoints.filter((w) => w.name);
 
   return (
@@ -79,7 +81,19 @@ export default function RouteStats({ route }: { route: RouteResult }) {
           Why this score
         </div>
         <Bar label="Twistiness" value={route.breakdown.twistiness} />
-        <Bar label="Small roads" value={smallRoads} />
+        <Bar label="Petites routes" value={Math.max(0, smallRoads)} />
+        {route.breakdown.mainRoadFraction > 0.15 && (
+          <Bar label="Nationales / axes" value={route.breakdown.mainRoadFraction} />
+        )}
+        {route.breakdown.highwayFraction > 0.05 && (
+          <Bar label="Autoroutes" value={route.breakdown.highwayFraction} />
+        )}
+        {fastRoads > 0.4 && (
+          <p className="text-xs text-amber-400/90">
+            Beaucoup d&apos;axes rapides sur ce tracé — essaie CHILL ou SCENIC, ou
+            un départ plus rural.
+          </p>
+        )}
         {route.breakdown.elevationGainM !== undefined && (
           <div className="flex justify-between text-xs text-zinc-400">
             <span>Elevation gain</span>
