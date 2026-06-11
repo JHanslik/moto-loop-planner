@@ -32,6 +32,26 @@ export interface ScoreBreakdown {
   elevationGainM?: number;
 }
 
+/** One weighted ingredient of the fun score (for the transparent breakdown). */
+export interface ScoreTerm {
+  key: string;
+  label: string;
+  value: number; // 0..1 normalized sub-metric
+  weight: number; // 0..1 weight in this style's formula
+  contribution: number; // points added to the score (value × weight × 100)
+}
+
+/** Full, human-auditable derivation of a route's fun score. */
+export interface ScoreExplanation {
+  style: RideStyle;
+  terms: ScoreTerm[];
+  baseScore: number; // 0..100 — sum of contributions before the fast-road malus
+  fastRoadsFraction: number; // 0..1 — share of distance on fast roads
+  malusApplied: boolean;
+  malusFactor: number; // 1 = none; <1 scales the score down
+  finalScore: number; // 0..100 — what the user sees
+}
+
 /** The shape returned by POST /api/generate-route and stored in `rides.route_geojson`. */
 export interface RouteResult {
   geometry: [number, number][]; // [lng, lat] pairs (GeoJSON order)
@@ -43,6 +63,88 @@ export interface RouteResult {
   score: number; // 0..100 "fun score"
   style: RideStyle;
   breakdown: ScoreBreakdown;
+}
+
+// ---------------------------------------------------------------------------
+// Open-data dossier — every external open dataset touched to build one loop.
+// Returned alongside the route so the UI can show *what* public data was used
+// and *where* it came from (transparency / provenance view).
+// ---------------------------------------------------------------------------
+
+/** One open-data source credited in the dossier. */
+export interface OpenDataSource {
+  id: string;
+  name: string; // "OpenStreetMap — Overpass API"
+  role: string; // what we used it for
+  license: string; // "ODbL", "© OpenStreetMap contributors"…
+  url: string;
+}
+
+/** A single POI returned by Overpass for this search. */
+export interface PoiRecord {
+  name: string;
+  kind: string; // raw OSM tag value (village, viewpoint, castle…)
+  category: string; // friendly grouping
+  interest: number; // 1–3 tier driving waypoint preference
+  lat: number;
+  lng: number;
+  usedInRoute: boolean; // did the winning loop pass through it?
+}
+
+/** Full provenance report for one generated loop. */
+export interface OpenDataReport {
+  generatedAt: string;
+  query: {
+    input: string;
+    resolvedName: string;
+    lat: number;
+    lng: number;
+    style: RideStyle;
+    durationMin: number;
+    targetKm: number;
+  };
+  geocoding: {
+    provider: string;
+    input: string;
+    result: string;
+    lat: number;
+    lng: number;
+  };
+  pois: {
+    provider: string;
+    searchRadiusKm: number;
+    overpassQuery: string;
+    totalFound: number;
+    usedInRoute: number;
+    byCategory: { category: string; count: number }[];
+    records: PoiRecord[];
+  };
+  routing: {
+    provider: string;
+    candidatesTried: number;
+    distanceKm: number;
+    durationMin: number;
+    geometryPoints: number;
+    smallRoadsPct: number;
+    mainRoadsPct: number;
+    highwayPct: number;
+  };
+  selection: {
+    candidatesGenerated: number;
+    candidatesRouted: number;
+    winnerScore: number;
+    scoreMin: number;
+    scoreMax: number;
+    steps: string[]; // ordered, human-readable decision pipeline
+  };
+  scoreExplanation: ScoreExplanation;
+  sources: OpenDataSource[];
+}
+
+/** Response shape of POST /api/generate-route. */
+export interface GenerateResponse {
+  route: RouteResult;
+  openData: OpenDataReport;
 }
 
 /** A row of the `rides` table (and the `ride_feed` view, which adds the *_count fields). */

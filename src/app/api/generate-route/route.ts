@@ -70,12 +70,25 @@ export async function POST(req: Request) {
     );
   }
 
+  // Credit the geocoding path that produced these coordinates.
+  const isCoords = /^-?\d{1,2}(?:\.\d+)?\s*,\s*-?\d{1,3}(?:\.\d+)?$/.test(
+    start.trim()
+  );
+  const provider = isCoords
+    ? startName?.trim()
+      ? "Autocomplétion (Photon + BAN)"
+      : "Coordonnées GPS directes"
+    : "Nominatim (OpenStreetMap)";
+
   const loop = await generateLoop(
     resolved.point,
     startName?.trim() || resolved.name,
     durationMin,
     style,
-    { useElevation }
+    {
+      useElevation,
+      provenance: { input: startName?.trim() || start.trim(), provider },
+    }
   );
   if (!loop) {
     return NextResponse.json(

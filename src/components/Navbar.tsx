@@ -17,6 +17,16 @@ const links = [
     ),
   },
   {
+    href: "/data",
+    label: "Open Data",
+    icon: (
+      <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
+        <ellipse cx="12" cy="5" rx="9" ry="3" />
+        <path d="M3 5v6c0 1.657 4.03 3 9 3s9-1.343 9-3V5M3 11v6c0 1.657 4.03 3 9 3s9-1.343 9-3v-6" />
+      </svg>
+    ),
+  },
+  {
     href: "/community",
     label: "Community",
     icon: (

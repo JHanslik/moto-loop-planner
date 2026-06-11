@@ -6,9 +6,15 @@ import RouteForm from "@/components/RouteForm";
 import RouteStats from "@/components/RouteStats";
 import ExportButtons from "@/components/ExportButtons";
 import StartNavigationButton from "@/components/StartNavigationButton";
+import OpenDataPanel from "@/components/OpenDataPanel";
 import { useAuth } from "@/components/AuthProvider";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
-import type { GenerateRequest, RouteResult } from "@/lib/types";
+import type {
+  GenerateRequest,
+  GenerateResponse,
+  OpenDataReport,
+  RouteResult,
+} from "@/lib/types";
 
 const MapView = dynamic(() => import("@/components/MapView"), {
   ssr: false,
@@ -22,6 +28,7 @@ const MapView = dynamic(() => import("@/components/MapView"), {
 export default function PlannerPage() {
   const { user } = useAuth();
   const [route, setRoute] = useState<RouteResult | null>(null);
+  const [openData, setOpenData] = useState<OpenDataReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -34,6 +41,7 @@ export default function PlannerPage() {
     setLoading(true);
     setError(null);
     setRoute(null);
+    setOpenData(null);
     setSavedMsg(null);
     try {
       const res = await fetch("/api/generate-route", {
@@ -43,7 +51,9 @@ export default function PlannerPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Generation failed.");
-      setRoute(data as RouteResult);
+      const { route: r, openData: od } = data as GenerateResponse;
+      setRoute(r);
+      setOpenData(od);
     } catch (e: any) {
       setError(e.message ?? "Something went wrong.");
     } finally {
@@ -161,6 +171,13 @@ export default function PlannerPage() {
           />
         </div>
       </div>
+
+      {/* Full-width open-data dossier for the current search */}
+      {openData && (
+        <div className="mt-6">
+          <OpenDataPanel report={openData} />
+        </div>
+      )}
     </div>
   );
 }

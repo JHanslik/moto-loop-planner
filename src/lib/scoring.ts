@@ -1,6 +1,11 @@
 import { bearing } from "./geo";
 import type { OsrmRoute } from "./osrm";
-import type { RideStyle, ScoreBreakdown } from "./types";
+import type {
+  RideStyle,
+  ScoreBreakdown,
+  ScoreExplanation,
+  ScoreTerm,
+} from "./types";
 
 // Speed thresholds (m/s) — tuned to catch more nationales / axes rapides on OSRM "driving".
 const MOTORWAY_SPEED = 26; // ~94 km/h — autoroute / voie express
@@ -54,7 +59,7 @@ export function scoreRoute(
   style: RideStyle,
   targetKm: number,
   elevationGainM?: number
-): { score: number; breakdown: ScoreBreakdown } {
+): { score: number; breakdown: ScoreBreakdown; explanation: ScoreExplanation } {
   const distanceKm = route.distanceM / 1000;
   const turn = totalTurning(route.coordinates);
   const turnsPerKm = distanceKm > 0 ? turn / distanceKm : 0;
@@ -70,44 +75,82 @@ export function scoreRoute(
       ? clamp01(elevationGainM / (distanceKm * 15)) // ~15 m/km counts as hilly
       : undefined;
 
-  let fun: number;
+  // Build the weighted ingredient list per style (weights sum to 1 in each case).
+  const term = (
+    key: string,
+    label: string,
+    value: number,
+    weight: number
+  ): ScoreTerm => ({
+    key,
+    label,
+    value,
+    weight,
+    contribution: value * weight * 100,
+  });
+
+  let terms: ScoreTerm[];
   switch (style) {
     case "SPORT":
-      fun =
-        100 *
-        (0.32 * twistiness + 0.18 * distanceMatch + 0.5 * smallRoads);
+      terms = [
+        term("twistiness", "Virages (twistiness)", twistiness, 0.32),
+        term("smallRoads", "Petites routes", smallRoads, 0.5),
+        term("distanceMatch", "Respect de la distance", distanceMatch, 0.18),
+      ];
       break;
     case "SCENIC":
-      fun =
+      terms =
         elevNorm !== undefined
-          ? 100 *
-            (0.2 * twistiness +
-              0.15 * distanceMatch +
-              0.45 * smallRoads +
-              0.2 * elevNorm)
-          : 100 * (0.25 * twistiness + 0.2 * distanceMatch + 0.55 * smallRoads);
+          ? [
+              term("smallRoads", "Petites routes", smallRoads, 0.45),
+              term("twistiness", "Virages (twistiness)", twistiness, 0.2),
+              term("elevation", "Dénivelé", elevNorm, 0.2),
+              term("distanceMatch", "Respect de la distance", distanceMatch, 0.15),
+            ]
+          : [
+              term("smallRoads", "Petites routes", smallRoads, 0.55),
+              term("twistiness", "Virages (twistiness)", twistiness, 0.25),
+              term("distanceMatch", "Respect de la distance", distanceMatch, 0.2),
+            ];
       break;
     case "CHILL":
     default: {
-      const chillTwist = 1 - Math.abs(twistiness - 0.4) / 0.6;
-      fun =
-        100 *
-        (0.2 * distanceMatch + 0.55 * smallRoads + 0.25 * Math.max(0, chillTwist));
+      // CHILL rewards *moderate* twistiness (~0.4): not a straight line, not a rally stage.
+      const chillTwist = Math.max(0, 1 - Math.abs(twistiness - 0.4) / 0.6);
+      terms = [
+        term("smallRoads", "Petites routes", smallRoads, 0.55),
+        term("chillTwist", "Sinuosité modérée", chillTwist, 0.25),
+        term("distanceMatch", "Respect de la distance", distanceMatch, 0.2),
+      ];
       break;
     }
   }
 
+  const baseScore = terms.reduce((s, t) => s + t.contribution, 0);
+
   // Hard malus when the loop is mostly on fast roads — keeps worst A/N candidates out.
-  if (fastRoads > 0.45) fun *= 1 - (fastRoads - 0.45) * 1.4;
+  const malusApplied = fastRoads > 0.45;
+  const malusFactor = malusApplied ? 1 - (fastRoads - 0.45) * 1.4 : 1;
+  const fun = baseScore * malusFactor;
+  const finalScore = Math.round(clamp01(fun / 100) * 100);
 
   return {
-    score: Math.round(clamp01(fun / 100) * 100),
+    score: finalScore,
     breakdown: {
       turnsPerKm,
       twistiness,
       highwayFraction: highway,
       mainRoadFraction: main,
       elevationGainM,
+    },
+    explanation: {
+      style,
+      terms,
+      baseScore,
+      fastRoadsFraction: fastRoads,
+      malusApplied,
+      malusFactor,
+      finalScore,
     },
   };
 }
